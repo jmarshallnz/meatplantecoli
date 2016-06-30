@@ -1,14 +1,18 @@
 library(readxl)
 
 dat <- read_excel("data/Five Expert Opinions - Combo RA for process modelling.xlsx", sheet = 1, skip=4)
+out <- read_excel("data/Ranking by %STEC 2014 abridged  .xlsx", sheet = 1, col_names = FALSE)
 
 # rearrange data into some sort of meaningful form.
 
 # Remove all empty columns
-dat = dat[,1:max(which(names(dat) != ""))]
+wch <- 1:max(which(names(dat) != ""))
+dat = dat[,wch]
+out = out[,wch]
 
 # Remove all empty rows
 dat = dat[rowSums(is.na(dat)) < ncol(dat),]
+out = out[rowSums(is.na(out)) < ncol(out),]
 
 # Copy down column 1
 vals <- which(!is.na(dat[,1]))
@@ -38,17 +42,42 @@ dat$Variable = unlist(lapply(strsplit(dat$Variable, " "), simplify_var))
 dat = dat[-1,]
 
 # grab out dat we want
-plants = dat[,3:22]
-plants = plants[,colSums(is.na(plants)) != nrow(plants)]
+wch = 3:22
+wch = wch[colSums(is.na(dat[,wch])) != nrow(dat)]
+plants = dat[,wch]
+
+plant_out = out[c(5,7,8),wch]
+rownames(plant_out) = c("Kill", "Days", "STEC")
+colnames(plant_out) = paste0('Plant', 1:ncol(plants))
 
 # remove some spaces at end of values
 library(stringr)
 plants = apply(plants, 2, function(x) { str_replace_all(x, " ", "") })
 
-colnames(plants) = paste('Plant', 1:ncol(plants))
+colnames(plants) = paste0('Plant', 1:ncol(plants))
 rownames(plants) = dat$Variable
 plants[plants == "na"] = NA
 
-final = data.frame(t(plants))
+# Additional processing care-of Bob...
+plants[plants == "ME78"] = "N"
+
+final = data.frame(cbind(t(plants), t(plant_out)))
+final$Plant = rownames(final)
+
+final$Kill = as.numeric(as.character(final$Kill))
+final$Days = as.numeric(as.character(final$Days))
+final$STEC = as.numeric(as.character(final$STEC))
+
+library(dplyr)
+final <- final %>% mutate(YCutting.ClearingBrisket = ifelse(YCutting.ClearingBrisket != "N", "Y", "N"),
+                          YCutting.YCutterFollowingCarcassRatherThanStationary = ifelse(YCutting.YCutterFollowingCarcassRatherThanStationary %in% c("FthenS", "S2/F2"), "F", "S"),
+                          AnalBunging.CleaningMethodOfRodUsedToInsertBung = ifelse(AnalBunging.CleaningMethodOfRodUsedToInsertBung %in% c("None", "none"), "N", "Y"),
+                          AnalBunging.TypeOfAnalBung = ifelse(AnalBunging.TypeOfAnalBung %in% c("A/Pl", "B", "Pl", "Pl/Sp", "PL/Sp"), "B/Pl", "Other"),
+                          NeckOpening.BloodCollection = ifelse(NeckOpening.BloodCollection == "N", "N", "Y"),
+                          Restrainer.MethodOfCleaningRestrainer = ifelse(Restrainer.MethodOfCleaningRestrainer %in% c("C", "CS"), "C", "H"))
+
+
 summary(final)
 
+# write file
+write.csv(final, "data/final_data.csv", row.names = FALSE)
