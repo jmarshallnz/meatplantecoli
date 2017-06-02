@@ -1,0 +1,59 @@
+---
+title: "Development of a process model for the slaughter and dressing of very young calves in New Zealand"
+author: "Jonathan Marshall"
+date: "30 May 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, root.dir = '..')
+```
+
+## Introduction
+
+In 1994 the US declared *Escherichia coli* O157:H7 an adulterant in food including raw meat for grinding. Subsequently on June 4th 2012 six STEC serotypes (O26, O111, O45, O145, O121, and O103; STEC6) were also declared adulterants in food, including certain types of raw meat, in the USA. As a consequence New Zealand bulk manufacturing beef and veal meat exported to the USA has to be tested for the presence of these specific serotypes (STEC7). 
+
+*E. coli* O157:H7 and the STEC6 have been classed as reasonably likely to occur on very young veal and therefore the US requires at least a single antimicrobial intervention to be used as a CCP (critical control point) post slaughter on carcass. Even with inclusion of a CCP the detection rate of STEC7 in product remains a significant issue for the meat industry. Clearly further work is required to identify the transmission route from hide to carcass for very young veal, providing the opportunity for direct or indirect mitigation.
+
+MPI has an on-going goal of improving hygienic dressing of very young calves and recent developments in key market requirements have highlighted the importance of minimising carcass contamination. In 2008, MPI (then NZFSA) evaluated individual processing steps at all processors of very young calves, and made 10 key recommendations to industry to improve processes that might reduce contamination of carcasses with STEC. 
+
+Unfortunately, MPI premises veterinarians in 2012 reported variable uptake, and the results of the STEC monitoring programme reinforced the need for ongoing improvement of hygienic dressing of carcasses. Since 2012, when expanded microbiological assessments have been required for the key market, the US, the microbiological results from those processors supplying product to the US have demonstrated the need to continue to improve carcass hygiene.
+
+In 2014, MPI re-evaluated individual processing steps at all processors of very young calves. Key parameters were recorded and the information analysed to determine potential contamination pathways. Processing plants were ranked according to NMD and STEC data, and new recommendations provided to industry to improve dressing. However, these recommendations are empirical based on expert opinion, and a more defined processing model is required to objectively quantify expected changes in STEC contamination when processes are modified or interventions added. The data collected during the 2014 survey and subsequent process modifications made for the 2015 season will be used to inform the development of a young veal processing model that can be used as a tool to further improve processing outcomes.
+
+## Data
+
+The MPI FRA team visited all young veal processing plants and carried out a visual inspection of processing from lairage through dressing and post-pre-trim to product packaging; documented activities at all stations that could impact hygienic processing, and determined the frequency an observed activity occur in all plants visited. Observations were compared with those from the previous survey (2008). In addition, pre-slaughter processes were recorded.
+
+This resulted in data being collected on 146 process variables in addition to process summary data (number of carcasses, STEC positives, and Days in operation) for 17 processors.
+
+The primary outcome of interest is STEC prevalence. As testing is typically carried out once per lot, and as in New Zealand this is typically once per shift, the number of days in operation is a suitable proxy for an upper limit on the prevalence. Thus, the proportion of positives out of the number of days in operation was regarded as the most suitable proxy for STEC prevalence. One of the processors did not have the number of Days in processing recorded, and was thus removed from the subsequent analysis.
+
+Of the 146 process variables, six contained missing data, and a further six showed no variation across processors and so were removed from further analysis, leaving 134 variables for the final analysis.
+
+In addition to the data collection, expert elicitation was used to determine which of these variables were
+likely to have an effect on contamination. Five experts were asked to rate each variable into 'Likely to affect STEC contamination', 'Unlikely to affect STEC contamination', or 'Unknown'. In addition, the direction of the effect (increase/decrease) was specified for some questions.
+
+The data are summarised in the table below.
+
+```{r}
+d <- read.csv("../temp/table.csv", check.names = FALSE)
+knitr::kable(d)
+```
+
+## Methods
+
+
+TODO: Write about why we're using LASSO and ridge regression, and what the model structure is.
+
+Also add in any other things we do (e.g. correlation of predictor variables via clustering/heatmap?)
+
+## Results
+
+TODO: Results from clustering/heatmap + Lasso/ridge regressions of important variables.
+
+Tables of important variables.
+
+## Summary
+
+TODO: Summarize key relationships etc, suggest places for more data collection?
