@@ -20,6 +20,9 @@
 # scale the sum in some way, e.g. a sqrt transformation? Probably doesn't make much difference: The magnitude will be
 # more important probably.
 
+library(dplyr)
+library(glmnet)
+
 #' Read in the data
 plants = read.csv("data/final_data.csv")
 priors = read.csv("data/final_prior_data.csv")
@@ -28,12 +31,11 @@ priors = read.csv("data/final_prior_data.csv")
 plants <- plants[plants$Plant != 'Plant9',]
 
 # ignore variables iwth missing data for now
-missing <- which(apply(plants, 2, function(x) { sum(is.na(x)) }) > 0)
-plants <- plants[,-missing]
-
 # ignore variables which have no variance
+missing <- which(apply(plants, 2, function(x) { sum(is.na(x)) }) > 0)
 no_variance <- which(apply(plants, 2, function(x) { length(unique(x))}) < 2)
-plants <- plants[,-no_variance]
+
+plants <- plants[,-c(missing, no_variance)]
 
 # extend the data frame for the Days variable
 start <- c(0, cumsum(plants$Days)) + 1
@@ -53,240 +55,73 @@ matvars <- newplant %>% select(-Kill, -Days, -STEC, -Plant)
 
 priors <- priors[match(names(matvars), priors$Variable),]
 
-penalty.factor = 2^((priors$NoEffect - priors$Effect)/5)
-
-library(glmnet)
-
-modelmat <- model.matrix( ~.-1, matvars)
-# predictors then need to be weighted accordingly...
-penalty.factor <- penalty.factor[attr(modelmat, 'assign')]
 
 lm <- glmnet(modelmat, outcome, family="binomial", alpha=0.9, lambda.min.ratio = 0.000001, nlambda = 1000)
 plot(lm, xvar='lambda', label=TRUE)
 plot(lm, xvar='dev', label=TRUE)
 
-cvfit <- cv.glmnet(modelmat, outcome, family="binomial", type.measure='auc', nfolds=20, alpha=0.9, penalty.factor=penalty.factor)
-plot(cvfit)
+set.seed(3)
 
-cvfit <- cv.glmnet(modelmat, outcome, family="binomial", type.measure='auc', nfolds=20, alpha=0.5, penalty.factor=penalty.factor)
-plot(cvfit)
-
-cf <- coef(cvfit, s='lambda.min')
-r <- rownames(cf)
-r[as.logical(cf != 0)]
-
-# now try a forest
-library(randomForest)
-
-plants.rf = randomForest(STEC ~ . -Days -Kill - Plant, data=newplant, importance = TRUE, ntree = 10000, node_size = 1, mtry=131)
-plants.rf
-
-# try RF for class probability rather than classes themselves
-plants$Prob <- plants$STEC / plants$Days
-plants.rf = randomForest(Prob ~ . -STEC -Days -Kill - Plant, data=plants, weights = Days, importance = TRUE, ntree = 10000, node_size = 1, mtry=131)
-plants.rf
-
-library(rpart)
-newdf <- newplant %>% select(-Days, -Kill, -Plant)
-rpart(STEC ~ . , data=newdf, minsplit=1, cp=0.0001)
-
-newdf2 <- plants %>% select(-Days, -Kill, -Plant, -STEC)
-rpart(Prob ~ ., data=newdf2, weights = plants$Days)
-
-# check whether this makes any sense at all, by working out the Gini on both sides of splits
-x <- newdf$PlantDetails.PurposeBuiltBobbyCalfChain
-improve <- function(x) {
-  
-  l <- levels(factor(x))
-  g <- numeric(length(l))
-  for (i in seq_along(l)) {
-    p <- prop.table(table(newdf$STEC[x == l[i]]))
-    gini <- sum(p*(1-p))
-    g[i] <- gini * sum(x == l[i]) / length(x)
+# iterate over different options for alpha
+alpha <- c(0,0.5,1)
+penalty <- seq(0,2,by=0.2)
+regcoef <- array(NA, dim = c(ncol(modelmat)+1, length(alpha), length(penalty)))
+dimnames(regcoef) <- list(c("(Intercept)",colnames(modelmat)), as.character(alpha), as.character(penalty))
+for (a in seq_along(alpha)) {
+  lambda <- matrix(NA, 100, length(penalty))
+  for (p in seq_along(penalty)) {
+    # compute penalty
+    cat("Fitting model for penalty", p, "alpha", a, "\n")
+    penalty.factor = 2^((priors$NoEffect - priors$Effect)/5 * penalty[p])
+    penalty.factor <- penalty.factor[attr(modelmat, 'assign')]
+    # CV fit model, and pull out coefficients at lambda min
+    for (i in 1:100) {
+      cat("i=",i,"\n")
+      cvfit <- cv.glmnet(modelmat, outcome, family="binomial", type.measure='auc', nfolds=80, alpha=alpha[a], penalty.factor=penalty.factor)
+      lambda[i,p] <- cvfit$lambda.min
+    }
+#    cf <- as.matrix(coef(cvfit, s='lambda.min'))
+#    regcoef[rownames(cf),a,p] <- cf[,1]
   }
-  sum(g)*length(x)
 }
 
-g <- apply(newdf, 2, improve)
-gr <- improve(rep(1, nrow(newdf)))
-improve <- (gr - g)*nrow(newdf)
+plot(cvfit)
 
-# creating data
-set.seed(1324)
-y <- sample(c(0,1), 30, T)
-x <- y
-x[1:5] <- 0
-# manually making the first split
-obs_L <- y[x<.5]
-obs_R <- y[x>.5]
-n_L <- sum(x<.5)
-n_R <- sum(x>.5)
-n <- length(x)
-y
-x
-fit <- rpart(y~x, method = "class", parms=list(split='gini'))
-fit$split[,3] # 5.384615
+cvfit <- cv.glmnet(modelmat, outcome, family="binomial", type.measure='auc', nfolds=200, alpha=0.5, penalty.factor=penalty.factor)
+plot(cvfit)
 
-y
-x
+# how lambda works:
 
-gini2 <- function(p) {sum(p*(1-p))}
-calc.impurity <- function(func = gini2)
-{
-impurity_root <- func(prop.table(table(y)))
-impurity_L <- func(prop.table(table(obs_L)))
-impurity_R <-func(prop.table(table(obs_R)))
-imp <- impurity_root - ((n_L/n)*impurity_L + (n_R/n)*impurity_R) # 0.3757
-imp*n
+# the difference seems to be log10(lambda.min.ratio)/(nlambda-1)
+
+# hmm, do we want constant lambda for the fit?
+LAMBDA <- 0.03
+
+alpha <- seq(0,1,by=0.05)
+penalty <- seq(0,2,by=0.1)
+regcoef <- array(NA, dim = c(ncol(modelmat)+1, length(alpha), length(penalty)))
+dimnames(regcoef) <- list(c("(Intercept)",colnames(modelmat)), as.character(alpha), as.character(penalty))
+for (a in seq_along(alpha)) {
+#  lambda <- matrix(NA, 100, length(penalty))
+  for (p in seq_along(penalty)) {
+    # compute penalty
+    cat("Fitting model for penalty", p, "alpha", a, "\n")
+    penalty.factor = 2^((priors$NoEffect - priors$Effect)/5 * penalty[p])
+    penalty.factor <- penalty.factor[attr(modelmat, 'assign')]
+    # CV fit model, and pull out coefficients at lambda min
+#    for (i in 1:100) {
+#      cat("i=",i,"\n")
+#      cvfit <- cv.glmnet(modelmat, outcome, family="binomial", type.measure='auc', nfolds=80, alpha=alpha[a], penalty.factor=penalty.factor)
+#      lambda[i,p] <- cvfit$lambda.min
+#    }
+    g <- glmnet(modelmat, outcome, family="binomial", alpha=alpha[a], penalty.factor=penalty.factor)
+    cf <- as.matrix(coef(g, s=LAMBDA, exact=TRUE, x=modelmat, y=outcome))
+    regcoef[rownames(cf),a,p] <- cf[,1]
+  }
 }
 
-calc.impurity(gini2)
+# OK, that then tells us something about the important covariates at least
 
-# fuck!
-y2 <- as.numeric(newdf$STEC)-1
-x2 <- as.numeric(newdf$BoningRoom.EdibleBeltsCleanedDuringShift)-1
+# I guess ideally we'd iterate that over various lambda, then we could show which ones are most important and when they become so.
 
-y <- y2[1:100+670]
-x <- x2[1:100+670]
-obs_L <- y[x<.5]
-obs_R <- y[x>.5]
-n_L <- sum(x<.5)
-n_R <- sum(x>.5)
-n <- length(x)
-calc.impurity(gini2)
-
-f <- rpart(y ~ x, method='class', minsplit=1, cp=0.0001)
-f$splits
-
-
-y <- c(rep(0,65),rep(1,15),rep(0,20))
-x <- c(rep(0,70),rep(1,30))
-#y <- y2[1:100+670]
-#x <- x2[1:100+670]
-obs_L <- y[x<.5]
-obs_R <- y[x>.5]
-n_L <- sum(x<.5)
-n_R <- sum(x>.5)
-n <- length(x)
-calc.impurity(gini2)
-
-f <- rpart(y ~ x, method='class', minsplit=1, cp=0.0001)
-f$splits
-
-y <- c(rep(0,65),rep(1,15),rep(0,20))
-x <- c(rep(0,70),rep(1,30))
-f <- rpart(y ~ x, method='class', minsplit=1, cp=0.0001, parms=list(split='gini'))
-
-obs_L <- y[x<.5]
-obs_R <- y[x>.5]
-n_L <- sum(x<.5)
-n_R <- sum(x>.5)
-gini <- function(p) {sum(p*(1-p))}
-impurity_root <- gini(prop.table(table(y)))
-impurity_L <- gini(prop.table(table(obs_L)))
-impurity_R <- gini(prop.table(table(obs_R)))
-impurity_root * (n_L+n_R) - (n_L*impurity_L + n_R*impurity_R) # 2.880952
-
-
-y <- c(rep(0,39),rep(1,16),rep(0,15))
-x <- c(rep(0,40),rep(1,30))
-rpart(y ~ x, method='class', parms=list(split='information'))
-
-y <- c(rep(0,51),rep(1,25),rep(0,26))
-x <- c(rep(0,51),rep(1,51))
-rpart(y ~ x, method='class')$splits
-
-library(randomForest)
-y <- c(rep(0,51),rep(1,25),rep(0,26))
-x <- c(rep(0,51),rep(1,51))
-randomForest(as.factor(y) ~ x, ntree=10000)
-rpart(as.factor(y) ~ x)
-table(y,predict(rpart(as.factor(y) ~ x),type='class'))
-
-y <- c(rep(0,51),rep(1,25),rep(0,26))
-x <- c(rep(0,51),rep(1,51))
-z <- c(rep(0,25),rep(1,26),rep(1,15),rep(0,10+26))
-rpart(y ~ x + z, method='class')
-
-y <- c(rep(0,65),rep(1,15),rep(0,20))
-x <- c(rep(0,70),rep(1,30))
-rpart(y ~ x, method='class', parms=list(split='gini'))
-table(y,predict(rpart(as.factor(y) ~ x),type='class'))
-
-# try with per-group probabilities instead
-y <- newdf2$Prob
-x <- as.numeric(newdf2$BoningRoom.EdibleBeltsCleanedDuringShift)-1
-rpart(y ~ x, minsplit=1, cp=0.0000001)
-
-obs_L <- y[x<.5]
-obs_R <- y[x>.5]
-n_L <- sum(x<.5)
-n_R <- sum(x>.5)
-#gini <- function(p) {sum(p*(1-p))}
-impurity_root <- var(y)
-impurity_L <- var(obs_L)
-impurity_R <- var(obs_R)
-impurity_root * (n_L+n_R-1) - (n_L*impurity_L + n_R*impurity_R) # 2.880952
-
-predict(rpart(y ~ x, minsplit=1, cp=0.0000001))
-
-y <- c(rep(0,10),rep(0.5,2))
-x <- c(rep(0,10),rep(1,2))
-rpart(y ~ x, minsplit=1, cp=0.0000000001)
-
-test_rpart <- function(offset) {
-  y <- c(rep(0,10),rep(0.5,2)) + offset
-  x <- c(rep(0,10),rep(1,2))
-  if (is.null(rpart(y ~ x, minsplit=1, cp=0, xval=0)$splits)) 0 else 1
-}
-
-
-test_split <- function(offset) {
-  y <- c(rep(0,10),rep(0.5,2)) + offset
-  x <- c(rep(0,10),rep(1,2))
-  if (is.null(rpart(y ~ x, minsplit=1, cp=0, xval=0)$splits)) 0 else 1
-}
-
-sum(replicate(1000, test_split(0))) # 1000, i.e. always splits
-sum(replicate(1000, test_split(0.5))) # 2, i.e. splits only sometimes...
-
-offset <- 0.5
-y <- c(rep(0,10),rep(0.5,2)) + offset
-x <- c(rep(0,10),rep(1,2))
-(mean(y[x<0.5]) - mean(y))^2 + (mean(y[x>0.5]) - mean(y))^2
-rpart2(y ~ x, minsplit=1, cp=0, xval=0)$splits
-predict(rpart(y ~ x, minsplit=1, cp=0, xval=0))
-
-library(rpart)
-test_split <- function(offset) {
-  y <- c(rep(0,10),rep(0.5,2)) + offset
-  x <- c(rep(0,10),rep(1,2))
-  if (is.null(rpart(y ~ x, minsplit=1, cp=0, xval=0)$splits)) 0 else 1
-}
-
-sum(replicate(1000, test_split(0))) # 1000, i.e. always splits
-sum(replicate(1000, test_split(0.5))) # 2, i.e. splits only sometimes...
-sum(replicate(1000, test_split(0.007000000000015))) # 2, i.e. splits only sometimes...
-sum(replicate(1000, test_split(0.00700000000001505))) # 2, i.e. splits only sometimes...
-sum(replicate(1000, test_split(0.0070000000000151))) # 2, i.e. splits only sometimes...
-sum(replicate(1000, test_split(0.00700000000001505))) # 2, i.e. splits only sometimes...
-sum(replicate(1000, test_split(0.007000000000015))) # 2, i.e. splits only sometimes...
-
-test_split <- function(g1, g2, offset) {
-  y <- c(g1,g2) + offset
-  x <- c(rep(0,length(g1)),rep(1,length(g2)))
-  if (is.null(rpart(y ~ as.factor(x), minsplit=1, cp=0, xval=0)$splits)) 0 else 1
-}
-
-sum(replicate(1000, test_split(0))) # 1000, i.e. always splits
-sum(replicate(1000, test_split(0.5))) # 2, i.e. splits only sometimes...
-
-g1 <- rnorm(10,0,0.1)
-g2 <- rnorm(2,1,0.1)
-test_split <- function(g1, g2, offset) {
-  y <- c(g1,g2) + offset
-  x <- c(rep(0,length(g1)),rep(1,length(g2)))
-  if (is.null(rpart(y ~ x, minsplit=1, cp=0, xval=0)$splits)) 0 else 1
-}
-sum(replicate(1000, test_split(g1,g2,0))) # 1000, i.e. always splits
-sum(replicate(1000, test_split(g1,g2,1000))) # 2, i.e. splits only sometimes...
+# So you could have plots of top XX variables by lambda/alpha/prior
