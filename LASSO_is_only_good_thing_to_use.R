@@ -125,3 +125,48 @@ for (a in seq_along(alpha)) {
 # I guess ideally we'd iterate that over various lambda, then we could show which ones are most important and when they become so.
 
 # So you could have plots of top XX variables by lambda/alpha/prior
+
+lambda <- 10^(-seq(1,4, by=0.05))
+alpha <- seq(0,1,by=0.1)
+penalty <- seq(0,2,by=0.2)
+regcoef <- array(NA, dim = c(ncol(modelmat)+1, length(lambda), length(alpha), length(penalty)))
+dimnames(regcoef) <- list(c("(Intercept)",colnames(modelmat)), as.character(lambda), as.character(alpha), as.character(penalty))
+for (l in seq_along(lambda)) {
+  for (a in seq_along(alpha)) {
+    #  lambda <- matrix(NA, 100, length(penalty))
+    for (p in seq_along(penalty)) {
+      # compute penalty
+      cat("Fitting model for penalty", p, "alpha", a, "lambda", l, "\n")
+      penalty.factor = 2^((priors$NoEffect - priors$Effect)/5 * penalty[p])
+      penalty.factor <- penalty.factor[attr(modelmat, 'assign')]
+      # CV fit model, and pull out coefficients at lambda min
+      #    for (i in 1:100) {
+      #      cat("i=",i,"\n")
+      #      cvfit <- cv.glmnet(modelmat, outcome, family="binomial", type.measure='auc', nfolds=80, alpha=alpha[a], penalty.factor=penalty.factor)
+      #      lambda[i,p] <- cvfit$lambda.min
+      #    }
+      g <- glmnet(modelmat, outcome, family="binomial", alpha=alpha[a], lambda = lambda, penalty.factor=penalty.factor)
+      cf <- as.matrix(coef(g, s=lambda[l], exact=TRUE, x=modelmat, y=outcome))
+      regcoef[rownames(cf),l,a,p] <- cf[,1]
+    }
+  }
+}
+
+# compress the array down to something smaller
+all <- list()
+k <- 1
+for (i in 1:dim(regcoef)[1]) {
+  for (j in 1:dim(regcoef)[2]) {
+    cat("Up to k=", k, "of", prod(dim(regcoef)[1:2]), "\n")
+    all[[k]] <- data.frame(Coefficient=dimnames(regcoef)[[1]][i], lambda=dimnames(regcoef)[[2]][j], alpha=dimnames(regcoef)[[3]], regcoef[i,j,,], check.names = FALSE)
+    k <- k + 1
+  }
+}
+
+a <- do.call(rbind, all)
+
+library(tidyr)
+b <- a %>% gather('penalty', 'value', `0`:`2`)
+b$lambda <- as.numeric(as.character(b$lambda))
+b$alpha <- as.numeric(as.character(b$alpha))
+write.csv(b, "temp/lasso.csv", row.names=FALSE)
