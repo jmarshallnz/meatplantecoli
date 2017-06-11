@@ -33,15 +33,16 @@ nsplit <- strsplit(nvar, "\\.")
 ncat <- unlist(lapply(nsplit, function(x) { x[[1]] }))
 nsub <- unlist(lapply(nsplit, function(x) { paste(unlist(x[-1]), collapse=' ') }))
 
-d <- data.frame(Category=ncat, Variable=nsub,
+baseline <- unlist(lapply(vars, function(x) { if (is.factor(x)) levels(x)[1] else 0 }))
+
+d <- data.frame(VarName=names(vars),
+                Category=ncat, Variable=nsub,
                 Missing=ifelse(missing, "Yes", ""),
                 `No Variation`=ifelse(no_variance, "Yes", ""),
                 `Effect Likely`=priors$Effect,
                 `Effect Unlikely`=priors$NoEffect,
                 `Effect Unknown`=priors$Unknown,
+                Baseline=baseline,
                  stringsAsFactors = FALSE, check.names = FALSE)
-
-# remove duplication in d (e.g. category column)
-d$Category[duplicated(d$Category)] <- ""
 
 write.csv(d, "temp/table.csv", row.names=FALSE)

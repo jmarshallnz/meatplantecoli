@@ -1,12 +1,21 @@
 ---
-title: "Development of a process model for the slaughter and dressing of very young calves in New Zealand"
-author: "Jonathan Marshall"
-date: "30 May 2017"
-output: html_document
+title: Development of a process model for the slaughter and dressing of very young
+  calves in New Zealand
+subtitle: Draft report
+author: "Jonathan Marshall, Massey University"
+date: "8 June 2017"
+output:
+  pdf_document:
+    includes:
+      in_header: header.tex
+    keep_tex: TRUE
+    fig_caption: yes
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, root.dir = '..')
+knitr::opts_chunk$set(echo = FALSE, root.dir = '..', message=FALSE, dev='tikz')
+library(dplyr)
+library(ggplot2)
 ```
 
 ## Introduction
@@ -15,11 +24,11 @@ In 1994 the US declared *Escherichia coli* O157:H7 an adulterant in food includi
 
 *E. coli* O157:H7 and the STEC6 have been classed as reasonably likely to occur on very young veal and therefore the US requires at least a single antimicrobial intervention to be used as a CCP (critical control point) post slaughter on carcass. Even with inclusion of a CCP the detection rate of STEC7 in product remains a significant issue for the meat industry. Clearly further work is required to identify the transmission route from hide to carcass for very young veal, providing the opportunity for direct or indirect mitigation.
 
-MPI has an on-going goal of improving hygienic dressing of very young calves and recent developments in key market requirements have highlighted the importance of minimising carcass contamination. In 2008, MPI (then NZFSA) evaluated individual processing steps at all processors of very young calves, and made 10 key recommendations to industry to improve processes that might reduce contamination of carcasses with STEC. 
+Ministry for Primary Industries (MPI) has an on-going goal of improving hygienic dressing of very young calves and recent developments in key market requirements have highlighted the importance of minimising carcass contamination. In 2008, MPI (then New Zealand Food Safety Agency) evaluated individual processing steps at all processors of very young calves, and made 10 key recommendations to industry to improve processes that might reduce contamination of carcasses with STEC. 
 
 Unfortunately, MPI premises veterinarians in 2012 reported variable uptake, and the results of the STEC monitoring programme reinforced the need for ongoing improvement of hygienic dressing of carcasses. Since 2012, when expanded microbiological assessments have been required for the key market, the US, the microbiological results from those processors supplying product to the US have demonstrated the need to continue to improve carcass hygiene.
 
-In 2014, MPI re-evaluated individual processing steps at all processors of very young calves. Key parameters were recorded and the information analysed to determine potential contamination pathways. Processing plants were ranked according to NMD and STEC data, and new recommendations provided to industry to improve dressing. However, these recommendations are empirical based on expert opinion, and a more defined processing model is required to objectively quantify expected changes in STEC contamination when processes are modified or interventions added. The data collected during the 2014 survey and subsequent process modifications made for the 2015 season will be used to inform the development of a young veal processing model that can be used as a tool to further improve processing outcomes.
+In 2014, MPI re-evaluated individual processing steps at all processors of very young calves. Key parameters were recorded and the information analysed to determine potential contamination pathways. Processing plants were ranked according to National Microbial Database (NMD) and STEC data, and new recommendations provided to industry to improve dressing. However, these recommendations are empirical based on expert opinion, and a more defined processing model is required to objectively quantify expected changes in STEC contamination when processes are modified or interventions added. The data collected during the 2014 survey and subsequent process modifications made for the 2015 season will be used to inform the development of a young veal processing model that can be used as a tool to further improve processing outcomes.
 
 ## Data
 
@@ -34,26 +43,362 @@ Of the 146 process variables, six contained missing data, and a further six show
 In addition to the data collection, expert elicitation was used to determine which of these variables were
 likely to have an effect on contamination. Five experts were asked to rate each variable into 'Likely to affect STEC contamination', 'Unlikely to affect STEC contamination', or 'Unknown'. In addition, the direction of the effect (increase/decrease) was specified for some questions.
 
-The data are summarised in the table below.
+The data are summarised in Table \ref{tab:data} below.
 
-```{r}
-d <- read.csv("../temp/table.csv", check.names = FALSE)
-knitr::kable(d)
+```{r, results='asis'}
+library(xtable)
+variable_table <- read.csv("../temp/table.csv", check.names = FALSE, stringsAsFactors = FALSE)
+
+# remove duplication in d (e.g. category column)
+d <- variable_table[,-c(1,9)]
+d[d == 0] <- ''
+d$Missing[d$Missing == 'Yes'] <- 'M'
+d$Missing[d$`No Variation` == "Yes"] <- "C"
+d$`No Variation` <- NULL
+d$Category[duplicated(d$Category)] <- ""
+d <- rbind(c(rep("", 3), "Likely", "Unlikely", "Unknown"), d)
+names(d)[4:6] <- rep("Effect",3)
+names(d)[3] <- c("Note")
+
+#names(variable_table)[6:8] <- paste("Effect", c("Likely", "Unlikely", "Unknown"), sep="\n")
+#cat('\\begin{landscape}')
+x <- xtable(d, align=c(rep('l',3), rep('@{}C',1), rep('@{}C',3)), caption="Summary of variables available, which are missing (M) or constant (C) across all plants, and the number of experts
+that rate as likely or unlikely to have an effect on STEC prevalence.", label='tab:data')
+wrap_col <- function(x, cols, chars) {
+  # run through the given columns and wrap
+  if (length(chars) < length(cols))
+    chars <- rep(chars, length(cols))
+  z <- lapply(cols, function(i) { lapply(x[[i]], strwrap, chars[i]) } )
+  len <- simplify2array(lapply(z, lengths))
+  maxlen <- apply(len, 1, max)
+  # repeat each *row* in x the appropriate number of times, filling in NA
+  y <- x[NULL,]
+  for (i in 1:nrow(x)) {
+    rep <- x[i,]
+    for (j in cols)
+      rep[j] <- z[[j]][[i]][1]
+    y <- rbind(y, rep)
+    for (j in seq_len(maxlen[i]-1)) {
+      rep[-cols] <- rep("", ncol(rep)-length(cols))
+      for (k in cols)
+        rep[k] <- ifelse(is.na(z[[k]][[i]][1+j]), '', paste0('\\hspace{2mm} ', z[[k]][[i]][1+j]))
+      y <- rbind(y, rep)
+    }
+  }
+  y
+}
+y <- x %>% wrap_col(c(1:2), c(25,40))
+
+sanity <- function(x) {
+  x <- gsub("&", "\\&", x, fixed = TRUE)
+  x <- gsub("%", "\\%", x, fixed = TRUE)
+  return(x)
+}
+print(y, tabular.environment = 'longtable', size='\\small', floating=FALSE, include.rownames=FALSE,hline.after=c(-1,1,nrow(y)),sanitize.text.function=sanity, comment=FALSE)
 ```
+
+## Data limitations
+
+The outcome measure of STEC prevalence are available only for boxed product, and are not available at other places along the processing chain. Thus, any associations found between processing variables and STEC prevalence may not be a consequence of process hygiene as no information regarding STEC prevalence at the beginning of processing (i.e. prevalence on hide, whether animals are colonised and shedding) are available. Instead, associations may indicate characteristics of plant processes for those plants that process animals that have higher prevalence (perhaps due to geographic variation in STEC prevalence).
+
+In order to attribute any differences in final STEC prevalence to processing differences, we would require contemporously collected data on STEC prevalence on animals - ideally the same animals (or group of animals) that are contributing to the boxes of product tested. In the absense of such data, we must emphasize that any associations may not present indicators of good or bad hygienic processing, rather they are areas where future sampling may be focused.
 
 ## Methods
 
+As the data consist of many more processing variables than there are data (plants), the choice of statistical model is important. A standard statistical model typically requires fewer parameters than data in order for those parameters to be estimable: where there are more parameters than data, then traditional statistical models will be non-identifiable, such that an infinite number of plausible relationships between the parameters and outcome of interest will give identical (perfect) model fits.
 
-TODO: Write about why we're using LASSO and ridge regression, and what the model structure is.
+To combat this, two main model types were considered: Random forests, and penalised logistic regression.
 
-Also add in any other things we do (e.g. correlation of predictor variables via clustering/heatmap?)
+### Random forest
+
+A random forest is a collection of decision trees. Decision trees are flowchart-like structures where each node represents a test on a variable, each branch represents the outcome of the test, and each leaf or terminal node represents the outcome variable of interest. The paths that data flow from the 'root' to the leaves of the tree represent classification rules that assign observations to the outcome of interest.
+
+In the case of many variables, a single decision tree suffers in the same way as traditional statistical models in that the tree has a tendency to overfit the data. Random forests use a collection of trees, each one generated from a random subsample of the data and a random subsample of the variables. This allows each variable in the data, and each observation in the data to contribute differentially to the final model fit.
+
+Decision trees for classification work best when the prevalence of the classes (i.e. STEC positives vs STEC negatives) is well differentiated across the observations (the plants). In cases where it isn't, the decision trees can often not differentiate the observations well, and thus the collection of those trees in a random forest performs poorly.
+
+This is the case with these data: the extent of differentiation among STEC prevalences on the plants is small enough that trees don't fit well, which leads to a poorly fitting random forest. Thus, this method was rejected as a choice for the final model.
+
+### Penalised regression
+
+In a traditional regression model, coefficients are fitted using maximum likelihood or similar, where the most likely value for the effect size of each variable are computed. In the case where we have more variables than observations, however, there are an infinite number of combinations of variables that perfectly fit the data, so that there is no maximum likelihood estimate: all values are equally likely, even implausibly large effect sizes.
+
+To combat this, a penalisation term is added to the estimation procedure, which restricts effect sizes to be closer to zero. This then yields a system that has a unique solution. The extent and type of penalisation may be varied, allowing a measure of variable importance, as well as a measure of effect size. In addition, penalisation may be interpreted as being equivalent to having apriori knowledge of the likelihood of strong or weak effect sizes, and can thus incorporate prior knowledge from experts into the estimation process.
+
+The model formulation is as follows. Let $Y_i$ be the number of positive STEC tests for the $i$-th plant, and $n_i$ represent the number of days (a proxy for the number of STEC tests). Let $x_{ij}$ be the value of the $j$-th variable for the $i$-th plant, and let $\beta_j$ be it's coefficient (effect size), with $\beta_0$ representing the baseline prevalence. Then we model $Y_i$ as
+$$
+\begin{aligned}
+Y_i &\sim \mathsf{Binomial(n_i, p_i)}\\
+\mathsf{logit}(p_i) &= \beta_0 + \beta_1 x_{i1} + \cdots + \beta_k x_{ik}
+\end{aligned}
+$$
+We then penalize the $\beta_j$ coefficients using an elastic net penalty term
+$$
+\lambda \left(\alpha \sum_j |\beta_j| + (1-\alpha)\frac{1}{2} \sum_j \beta_j^2\right)
+$$
+so that when $\lambda$ is large, the magnitude of the coefficients $\beta_j$ are constrained to be close to 0, and if $\lambda$ is small they may be larger. The range of $\lambda$ used varied from $0.0001$ to $0.1$ which allows the full range from all variables being included in the model through to no variables being included.
+
+The mixing parameter $\alpha$ above allows the penalty to vary between the two extremes of restricting the magnitude of the coefficients ($|\beta_j|$) or the square of the magnitudes ($\beta_j^2$) which are known as ridge or LASSO regression respectively.
+
+LASSO regression restricts the coefficients of any non-important variable to be exactly zero, and only allows 'important' variables to be non-zero, while ridge regression allows all variables to be non-zero, with most of them small. LASSO is typically well suited when a small number of variables are important, while many are unimportant, while ridge is better suited when many variables may be of small importance and are likely correlated. By varying the $\alpha$ parameter, the degree of relatedness between variables can be assessed.
+
+Prior information from experts may be incorporated by adjusting the weight of each variable in the expression above. We used
+$$
+\lambda \left(\alpha \sum_j w_j|\beta_j| + (1-\alpha)\frac{1}{2} \sum_j w_j\beta_j^2\right)
+$$
+where the weights $w_j$ were given by
+$$
+w_j = 2^{\frac{\#\mathsf{NoEffect} - \#\mathsf{Effect}}{5}s}
+$$
+where $\#\mathsf{NoEffect}$ and $\#\mathsf{Effect}$ are the number of experts that rated the variable as having no or some effect respectively (precluding those that rated it as 'Unknown') and $s$ is the strength of prior evidence on the penalisation, varying from 0 (none) to 2 (strong). In the above, if all 5 experts considered a variable would have no effect, then the penalisation would be $w_j = 2^s > 1$ giving a stronger penalty term, restricting the variable's effect size. On the other hand, if all 5 experts considered the variable would have an effect the penalty would be weaker ($w_j = 2^{-s} < 1$), allowing the effect size to be larger. And if all 5 experts regarded it as unknown, $w_j = 1$ so that there is no additional knowledge in either direction.
+
+We fit the model using the `glmnet` elastic net package in `r version$version.string`, allowing $\lambda$ to vary from 0.0001 to 0.1, $\alpha$ to vary from 0 through 1 in steps of 0.1, and $s$ to vary from 0 to 2 in steps of 0.2. Variables were ranked based on the number of times across the full range of parameter values that their coefficients were non-zero, and plots were produced of coefficients on the odds-ratio scale by penalty ($\lambda$), $\alpha$, and strength of prior information $s$.
+
+For final model selection, the optimal $\lambda$, $\alpha$, and $s$ were chosen using by optimising the area under the the ROC curve (i.e. optimising model sensitivity and specificity simultaneously). 50-fold cross-validation was used, so that testing days were divided into 50 groups at random, with the test results for each group in turn was predicted using the data from the remaining 49 groups. 100 replicates were used in order to compute variation in cross-validation estimates. Model fits were assessed by plotting the median, 20th and 80th percentiles of the area under the curve versus $\lambda$ for each of the $\alpha$ and $s$ parameters. The combination of parameters that consistently gave the best predictive performance was then chosen, and the model was fit using those parameters to determine variables to use and effect sizes. A comparison between predicted and observed prevalence could then be generated.
+
+In addition, the above procedure was repeated using leave-one-out cross-validation at the plant level. i.e. the prevalence of STEC on each plant in turn was predicted using a model trained on the remaining plants. This allows some indication of whether STEC variation between plants is predictable from the variables on hand, while the previous cross-validation is attempting to predict some days using (partial) information from the same plant.
 
 ## Results
 
-TODO: Results from clustering/heatmap + Lasso/ridge regressions of important variables.
+```{r setup_coef_stuff}
+var_map <- read.csv("../temp/variable_names.csv", stringsAsFactors = FALSE)
+lasso <- read.csv("../temp/lasso_coef.csv", stringsAsFactors = FALSE)
+lasso_group <- lasso %>% select(Coefficient, coefNonZero) %>% unique
 
-Tables of important variables.
+# grab the important ones and map variable names
 
-## Summary
+sub_len <- function(x) {
+  x <- as.character(x)
+  unlist(lapply(x, function(x) {
+    i <- 1
+    while(i < nchar(x)) {
+      match <- which(variable_table$VarName == substring(x,1,nchar(x)-i))
+      if (length(match) > 0)
+        break
+      i <- i + 1
+    }
+    i
+  }))
+}
 
-TODO: Summarize key relationships etc, suggest places for more data collection?
+top <- lasso_group %>% left_join(var_map) %>% filter(Coefficient != "(Intercept)") %>% arrange(coefNonZero)
+
+# join back up so we have it for plotting
+lasso <- lasso %>% filter(Coefficient != "(Intercept)") %>% left_join(top %>% mutate(Label=paste(Category, Variable, Value, sep=": ")) %>% select(Coefficient, Label))
+
+# labellers for axes
+prior_labeller <- function(x) {
+  x <- ifelse(x == "0", "No expert reliance", ifelse(x == "2", "Strong expert reliance", ""))
+}
+lasso_labeller <- function(x) {
+  x <- ifelse(x == "0.2", "Ridge", ifelse(x == "1", "LASSO", ""))
+}
+```
+
+Variable rankings are shown in Table \ref{tab:ranks}, ranked by the percentage of models (across all $\lambda, \alpha, s$) containing the variable. Note that variables shown are compared to the baseline level. e.g. Position On Chain Of Anal Bung Insertion's value is 'B / A' so represents the effect of B vs A for that variable. Expert views on whether each variable affects STEC prevalence are shown on a scale from -5 (all agree there should be no effect) through to +5 (all agree there should be an effect). Many of the higher ranked variables are in agreement with expert view, though some are uncertain (such as the cleaning method of the rod used to insert the anal bung).
+
+```{r, results='asis'}
+d <- top %>% mutate(coefNonZero=round(100-coefNonZero*100,1)) %>% left_join(variable_table) %>%
+  mutate(Effect = `Effect Likely` - `Effect Unlikely`) %>%
+  mutate(Value = paste0(Value,' / ',Baseline)) %>%
+  select(Category, Variable, Value, `Models (%)`=coefNonZero, Experts=Effect)
+
+x <- xtable(d, align=c(rep('l',3), rep('c',3)), caption="Variable ranking across all $\\lambda$, $\\alpha$ and $s$ by the number of models that contain each variable. In the Value column 'A / B' compares plants that have 'A' for that variable to those that have 'B'.", label='tab:ranks')
+y <- x %>% wrap_col(c(1:2), c(25,40))
+
+print(y, tabular.environment = 'longtable', floating=FALSE, include.rownames=FALSE,sanitize.text.function=sanity, comment=FALSE)
+```
+
+How the effect of each of the top 20 variables change with penalty ($\lambda$), model type ($\alpha$) and strength of expert opinion ($s$) is visualised in Figures \ref{fig:vars1}--\ref{fig:vars5}.
+
+Of interest, the top 3 important variables according to the data (position on the chain of anal bung insertion, tail tipped after hide pulling, and use of tweezers by trimmers prior to carcass inspection) were all considered important according to the experts, while the 4th most important variable according to the data (method of cleaning the anal bung insertion rod), was not considered as important by experts (3 thought it would have an effect, while 2 concluded it would have no effect). The variable with highest initial effect (i.e. at large penalties) is Position on chain of anal bung insertion, but the magnitude of the effect decreases as the penalty is reduced and other variables enter the model.
+
+The effect of experts on variables 5-12 was marked, with these effet sizes for these variables being strongly influenced as more reliance was placed on expert opinion. In most cases this was to increase the effect size, though in the case of the position on chain of anal bung insertion (O) and material used for restraining belts (R), the experts thought these would have little effect, while the data suggested both may be protective.
+
+```{r}
+starts <- 0:4*4+1
+ends   <- 0:4*4+4
+caps   <- paste0(starts, c("st-",rep("th-",4)), ends, "th")
+```
+
+```{r vars1, fig.width=8, fig.height=10, fig.cap=paste0("\\label{fig:vars", 1, "}Effect size for the ", caps[1], " process variables by penalty (decreasing from left to right), model type (Ridge vs LASSO) and extent of reliance on expert knowledge.")}
+coef_lass <- lasso %>% filter(Coefficient %in% top$Coefficient[starts[1]:ends[1]]) %>% droplevels
+g <- ggplot(coef_lass) +
+  geom_line(aes(x=-log10(lambda), y=exp(value), colour = Label)) +
+  facet_grid(penalty ~ alpha, labeller=labeller(penalty=as_labeller(prior_labeller),
+                                                alpha=as_labeller(lasso_labeller))) +
+  theme_bw() +
+  theme(legend.position='top', legend.justification='left') +
+  ylab("Odds ratio for prevalence of STEC") +
+  xlab("LASSO/Ridge penalty") +
+  scale_x_continuous(breaks=NULL) + 
+  scale_y_log10(breaks=c(0.25,0.5,1,2,4), limits=c(0.25,4)) +
+  guides(colour=guide_legend(title=NULL,nrow=4,byrow=TRUE))
+#ggtitle(paste0("Effect size of process variables ", starts[1],"-", ends[1]))
+print(g)
+```
+
+```{r vars2, fig.width=8, fig.height=10, fig.cap=paste0("\\label{fig:vars", 2, "}Effect size for the ", caps[2], " process variables by penalty (decreasing from left to right), model type (Ridge vs LASSO) and extent of reliance on expert knowledge.")}
+coef_lass <- lasso %>% filter(Coefficient %in% top$Coefficient[starts[2]:ends[2]]) %>% droplevels
+g <- ggplot(coef_lass) +
+  geom_line(aes(x=-log10(lambda), y=exp(value), colour = Label)) +
+  facet_grid(penalty ~ alpha, labeller=labeller(penalty=as_labeller(prior_labeller),
+                                                alpha=as_labeller(lasso_labeller))) +
+  theme_bw() +
+  theme(legend.position='top', legend.justification='left') +
+  ylab("Odds ratio for prevalence of STEC") +
+  xlab("LASSO/Ridge penalty") +
+  scale_x_continuous(breaks=NULL) + 
+  scale_y_log10(breaks=c(0.25,0.5,1,2,4), limits=c(0.25,4)) +
+  guides(colour=guide_legend(title=NULL,nrow=4,byrow=TRUE))
+#ggtitle(paste0("Effect size of process variables ", starts[2],"-", ends[1]))
+print(g)
+```
+
+```{r vars3, fig.width=8, fig.height=10, fig.cap=paste0("\\label{fig:vars", 3, "}Effect size for the ", caps[3], " process variables by penalty (decreasing from left to right), model type (Ridge vs LASSO) and extent of reliance on expert knowledge."), fig.lp='fig:'}
+coef_lass <- lasso %>% filter(Coefficient %in% top$Coefficient[starts[3]:ends[3]]) %>% droplevels
+g <- ggplot(coef_lass) +
+  geom_line(aes(x=-log10(lambda), y=exp(value), colour = Label)) +
+  facet_grid(penalty ~ alpha, labeller=labeller(penalty=as_labeller(prior_labeller),
+                                                alpha=as_labeller(lasso_labeller))) +
+  theme_bw() +
+  theme(legend.position='top', legend.justification='left') +
+  ylab("Odds ratio for prevalence of STEC") +
+  xlab("LASSO/Ridge penalty") +
+  scale_x_continuous(breaks=NULL) + 
+  scale_y_log10(breaks=c(0.25,0.5,1,2,4), limits=c(0.25,4)) +
+  guides(colour=guide_legend(title=NULL,nrow=4,byrow=TRUE))
+#ggtitle(paste0("Effect size of process variables ", starts[3],"-", ends[1]))
+print(g)
+```
+
+```{r vars4, fig.width=8, fig.height=10, fig.cap=paste0("\\label{fig:vars", 4, "}Effect size for the ", caps[4], " process variables by penalty (decreasing from left to right), model type (Ridge vs LASSO) and extent of reliance on expert knowledge.")}
+coef_lass <- lasso %>% filter(Coefficient %in% top$Coefficient[starts[4]:ends[4]]) %>% droplevels
+g <- ggplot(coef_lass) +
+  geom_line(aes(x=-log10(lambda), y=exp(value), colour = Label)) +
+  facet_grid(penalty ~ alpha, labeller=labeller(penalty=as_labeller(prior_labeller),
+                                                alpha=as_labeller(lasso_labeller))) +
+  theme_bw() +
+  theme(legend.position='top', legend.justification='left') +
+  ylab("Odds ratio for prevalence of STEC") +
+  xlab("LASSO/Ridge penalty") +
+  scale_x_continuous(breaks=NULL) + 
+  scale_y_log10(breaks=c(0.25,0.5,1,2,4), limits=c(0.25,4)) +
+  guides(colour=guide_legend(title=NULL,nrow=4,byrow=TRUE))
+#ggtitle(paste0("Effect size of process variables ", starts[4],"-", ends[1]))
+print(g)
+```
+
+```{r vars5, fig.width=8, fig.height=10, fig.cap=paste0("\\label{fig:vars", 5, "}Effect size for the ", caps[5], " process variables by penalty (decreasing from left to right), model type (Ridge vs LASSO) and extent of reliance on expert knowledge.")}
+coef_lass <- lasso %>% filter(Coefficient %in% top$Coefficient[starts[5]:ends[5]]) %>% droplevels
+g <- ggplot(coef_lass) +
+  geom_line(aes(x=-log10(lambda), y=exp(value), colour = Label)) +
+  facet_grid(penalty ~ alpha, labeller=labeller(penalty=as_labeller(prior_labeller),
+                                                alpha=as_labeller(lasso_labeller))) +
+  theme_bw() +
+  theme(legend.position='top', legend.justification='left') +
+  ylab("Odds ratio for prevalence of STEC") +
+  xlab("LASSO/Ridge penalty") +
+  scale_x_continuous(breaks=NULL) + 
+  scale_y_log10(breaks=c(0.25,0.5,1,2,4), limits=c(0.25,4)) +
+  guides(colour=guide_legend(title=NULL,nrow=4,byrow=TRUE))
+#ggtitle(paste0("Effect size of process variables ", starts[5],"-", ends[1]))
+print(g)
+```
+
+### Model optimisation
+
+```{r}
+s <- read.csv("../temp/lasso_fit.csv") %>%
+  filter(round(alpha*5) == alpha*5, alpha > 0, round(penalty*2.5) == penalty*2.5)
+s2 <- read.csv("../temp/lasso_fit_zoom.csv")
+best_fit <- s2 %>% top_n(1, mvalue) %>% arrange(mvalue)
+s3 <- read.csv("../temp/lasso_fit_zoomed.csv")
+best_fit2 <- s3 %>% top_n(1, mvalue) %>% arrange(mvalue)
+```
+
+The median and central 60th percentile interval for the area under the ROC curve are shown in Figure \ref{fig:auc_broad} for a range of $\lambda$, $\alpha$ and $s$. Most of the models can be seen to give very similar (around 0.6) area under the ROC curves, so there is not much basis for choosing one set over another. The highest values occur when $s=`r round(best_fit2$penalty,1)`$ and $\alpha=`r round(best_fit2$alpha,1)`$ in the bottom left, but this is very sensitive to the choice of $\lambda$. As this is relying strongly on expert opinion, and as high $\alpha$ forces many coefficients to zero, this is likely due to minimising the uncertainty associated with prediction through not having to estimate too many coefficients. To build the final model we favour instead a less stringent reliance on expert opinion, with $s=1$ and a mix of ridge and LASSO regression, and so explore further around $\alpha=0.5$, where the peak area under the curve is more broad, being less sensitive to the choice of $\lambda$ (Figure \ref{fig:auc_tight}).
+
+```{r, fig.width=10, fig.height=8, fig.cap="\\label{fig:auc_broad}Area under the ROC curve of model fits for varying $\\lambda$, $\\alpha$ and $s$ based on 50-fold cross-validation of testing days. Blue bands are central 60th percentile intervals, while solid lines are medians."}
+
+ggplot(s) + geom_ribbon(aes(x=log10(lambda), ymin=lvalue, ymax=uvalue), alpha=0.5, fill='steelblue') + 
+  geom_line(aes(x=log10(lambda), y=mvalue)) + facet_grid(alpha ~ penalty) +
+  theme_bw() +
+  ylab("Predictive performance (Area under curve)") +
+  xlab("LASSO/Ridge penalty") +
+  theme_bw()
+```
+
+```{r auc_tight, fig.width=10, fig.height=8, fig.cap=paste0("\\label{fig:auc_tight}Zoomed in area under the ROC curve of model fits for varying $\\lambda$, $\\alpha$ and $s$ around the optimal values. Blue bands are central 60th percentile intervals, while solid lines are medians. The optimal model occurs around $s=",round(best_fit$penalty,1),"$, $\\alpha=", round(best_fit$alpha,1),"$, $\\lambda=",round(best_fit$lambda,2),"$.")}
+
+ggplot(s2) + geom_ribbon(aes(x=log10(lambda), ymin=lvalue, ymax=uvalue), alpha=0.5, fill='steelblue') + 
+  geom_line(aes(x=log10(lambda), y=mvalue)) + facet_grid(alpha ~ penalty) +
+  theme_bw() +
+  ylab("Predictive performance (Area under curve)") +
+  xlab("LASSO/Ridge penalty") +
+  theme_bw()
+```
+
+As can be seen, the optimal model occurs when $s=`r round(best_fit$penalty,1)`$, $\alpha=`r round(best_fit$alpha,1)`$, $\lambda=`r round(best_fit$lambda,2)`$, though it should be noted that many other parts of the parameter space produce models that are almost as good, suggesting that the data are only informative on eliminating variables that appear unimportant and that the remaining set are difficult to distinguish between. This can be seen clearly when the above process of optimal model selection is performed using a leave one plant out approach. i.e. instead of leaving a proportion of the observations (individual days) out across all plants, we instead leave each plant as a whole out in turn, predicting the prevalence for that plant using a model built using data on the remaining plants. When this is done, there is very similar model performance across the whole parameter space, as seen in Figure \ref{fig:loo_broad}. This suggests that a proportion of variation in STEC prevalence between plants is not well captured by the variables measured.
+
+```{r loo_broad, fig.width=10, fig.height=8, fig.cap="\\label{fig:loo_broad}Area under the ROC curve of model fits for varying $\\lambda$, $\\alpha$ and $s$ for leave-one-out predictions for each plant. Blue bands are central 60th percentile intervals, while solid lines are medians."}
+s4 <- read.csv("../temp/lasso_fit_LOO.csv")
+
+ggplot(s4) + geom_ribbon(aes(x=log10(lambda), ymin=lvalue, ymax=uvalue), alpha=0.5, fill='steelblue') + 
+  geom_line(aes(x=log10(lambda), y=mvalue)) + facet_grid(alpha ~ penalty) +
+  theme_bw() +
+  ylab("Predictive performance (Area under curve)") +
+  xlab("LASSO/Ridge penalty") +
+  theme_bw()
+```
+
+### Final model
+
+The optimal model above, where $s=`r round(best_fit$penalty,1)`$, $\alpha=`r round(best_fit$alpha,1)`$, $\lambda=`r round(best_fit$lambda,2)`$, results in the variables and corresponding odds ratios given in the table below, where as a comparison, a second model relying more strongly expert evidence ($s=`r round(best_fit2$penalty,1)`$, $\alpha=`r round(best_fit2$alpha,1)`$, $\lambda=`r round(best_fit2$lambda,2)`$) is also shown. As can be seen, six variables are
+found in both models, and these shared variables were also highly ranked. The variables with highest influence are 'Cleaning method of rod used to insert anal bung' set to 'Y' which is found to be protective compared to 'N', 'Tail tipped after hide puller' which is a risk if 'S' while 'Y' is protective compared to 'N', and 'Y cutting clearing neck' which is a risk factor when set to 'Y' compared to 'N'.
+
+```{r, results='asis'}
+coef <- read.csv("../temp/final_coef.csv", stringsAsFactors=FALSE) %>%
+  left_join(var_map, by=c('VarName'='Coefficient')) %>%
+  left_join(variable_table %>% select(VarName.y=VarName, Baseline)) %>%
+  mutate(Value = ifelse(is.na(Value), '', paste0(Value, " / ", Baseline))) %>%
+  select(Category, Variable, Value, Coefficient, Coef2) %>%
+  filter(Coefficient != 0 | Coef2 != 0) %>%
+  mutate(Coefficient = ifelse(Coefficient == 0, NA, round(exp(Coefficient),2)),
+         Coef2 = ifelse(Coef2 == 0, NA, round(exp(Coef2),2))) %>%
+  rename(Optimal = Coefficient, Alternate = Coef2)
+coef$Variable[1] <- "Baseline prevalence"
+coef$Optimal[1] <- round(coef$Optimal[1] / (1 + coef$Optimal[1]),2)
+coef$Alternate[1] <- round(coef$Alternate[1] / (1 + coef$Alternate[1]),2)
+coef[is.na(coef)] <- ""
+x <- xtable(coef, align=c(rep('l',3), rep('c',3)), caption="Odds ratios for each variable in the final optimal and alternate model.", label='tab:coef')
+y <- x %>% wrap_col(c(1:2), c(25,40))
+
+print(y, tabular.environment = 'longtable', floating=FALSE, include.rownames=FALSE,sanitize.text.function=sanity, comment=FALSE)
+```
+
+Model fits compared with the observed STEC prevalence is seen in Figure \ref{fig:model_fit} for both the optimal and alternate model. Both models estimate the trend correctly (i.e. those with higher observed prevalence are predicted to be higher) though the extent is underestimated at the high end, and overestimated at the low end. This is to be expected in a penalised logistic regression, as the penalty term restricts coefficients to being close to zero, thus predictions are pulled closer to the average prevalence given by the intercept term. It is noted that many other combinations of variables could produce a similar model, including the alternate model.
+
+```{r model_fit, fig.width=10, fig.height=5.5, fig.cap="\\label{fig:model_fit}Predicted versus observed prevalence (%) for the optimal and alternate models.", sanitize=TRUE}
+pred <- read.csv("../temp/final_prediction.csv")
+pred$Model <- relevel(pred$Model, "Optimal")
+ggplot(pred) + geom_point(aes(x=100*Observed,y=100*Predicted)) +
+  geom_abline(intercept=0, slope=1) +
+  facet_grid(~Model) +
+  scale_x_continuous(limits=c(0,33), expand=c(0,0), name='Observed prevalence (%)') +
+  scale_y_continuous(limits=c(0,33), expand=c(0,0), name='Predicted prevalence (%)') +
+#  ggtitle("Predicted versus Observed prevalence") +
+  theme_bw()
+```
+
+## Summary and Future Work
+
+This study has identified a number of processing variables that appear to be associated with STEC prevalence. Most of these were also identified by expert opinion, giving some confidence that the effect seen might be replicable. Variables associated with Anal bunging, tail tipping, and the use of tweezers by trimmers appeared to have the strongest evidence for an association with STEC prevalence.
+
+A large unknown is whether the plants have a similar amount of contamination entering them from the animals being slaughtered. The STEC data is on final product, and it may be that the level of STEC on product may simply be a reflection of the contamination on hides or on the STEC prevalence or shedding levels of the animals. There is some evidence for some plant to plant variability that is not accounted for by the model which might represent a differing exposure to STEC from animals, or some other processing variables that remain unmeasured.
+
+Further unknowns are whether any variables identified as being important are causative of increased or decreased STEC contamination, or whether they represent indicators of more general process conditions.
+
+It is suggested that future sampling be undertaken across a number of suppliers both before and after parts of the processing chain influenced by the above variables, so that comparative increases and decreases in any contamination may be recorded. This would allow the above associations to be tested for causation, thus identifying areas or processes where interventions may be placed.
+
+Given the typically low prevalence of STEC on product, a reasonably large number of samples may be required in order to show differences. For example if we expect a process might result in prevalence reducing from 20% to 10%, we would require a sample size of 118 to have 80% power to detect this difference, assuming that pre and post measures are 50% correlated (likely, due to multiple measures on the same carcass). A well designed study would need to also account for the plant to plant variability in prevalence among the animals being slaughtered, and any clustering that might be present (super shedders).
